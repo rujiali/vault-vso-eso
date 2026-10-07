@@ -1,0 +1,29 @@
+# VSO side: how this namespace reaches Vault and who it authenticates as.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app
+  namespace: app-vso
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: vault
+  namespace: app-vso
+spec:
+  address: http://vault.vault.svc.cluster.local:8200
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: vault
+  namespace: app-vso
+spec:
+  vaultConnectionRef: vault
+  method: kubernetes
+  mount: kubernetes
+  namespace: demo  # vault-namespace (set from VAULT_NS)
+  kubernetes:
+    role: app-vso
+    serviceAccount: app
+    audiences: ["vault"]

@@ -1,0 +1,5 @@
+.secrets/
+lab.env
+license/*.hclic
+terraform/.terraform/
+terraform/terraform.tfstate*

@@ -1,0 +1,59 @@
+# ESO side: the app. Identical to the VSO side apart from namespace and SIDE.
+# Note: no restart annotation — ESO has no built-in reload. demo/eso-reloader.sh adds one.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: app-eso
+  labels: { app: demo }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: demo }
+  template:
+    metadata:
+      labels: { app: demo }
+    spec:
+      serviceAccountName: app
+      automountServiceAccountToken: false
+      containers:
+        - name: app
+          image: python:3.12-alpine
+          command: ["python", "-u", "/code/app.py", "workload"]
+          env:
+            - { name: SIDE, value: eso }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: APP_MESSAGE
+              valueFrom: { secretKeyRef: { name: app-config, key: message } }
+            - name: DB_USERNAME
+              valueFrom: { secretKeyRef: { name: db-creds, key: username } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: db-creds, key: password } }
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /state, port: 8080 }
+            periodSeconds: 2
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: code, mountPath: /code, readOnly: true }
+            - { name: tls, mountPath: /tls, readOnly: true }
+      volumes:
+        - name: code
+          configMap: { name: app-code }
+        - name: tls
+          secret: { secretName: app-tls }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+  namespace: app-eso
+spec:
+  selector: { app: demo }
+  ports:
+    - port: 8080
+      targetPort: 8080

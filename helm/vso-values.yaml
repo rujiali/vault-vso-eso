@@ -1,0 +1,21 @@
+# Vault Secrets Operator.
+# The client cache is persisted to Kubernetes, encrypted with Vault Transit, so a restarted
+# operator picks up its existing leases instead of minting new credentials (scenario 5).
+defaultVaultConnection:
+  enabled: true
+  address: http://vault.vault.svc.cluster.local:8200
+
+controller:
+  manager:
+    clientCache:
+      persistenceModel: direct-encrypted
+      storageEncryption:
+        enabled: true
+        mount: kubernetes
+        namespace: demo
+        transitMount: vso-transit
+        keyName: vso-client-cache
+        kubernetes:
+          role: vso-operator
+          serviceAccount: vault-secrets-operator-controller-manager
+          tokenAudiences: ["vault"]

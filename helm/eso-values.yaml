@@ -1,0 +1,2 @@
+# External Secrets Operator — chart defaults, CRDs installed by the chart.
+installCRDs: true
