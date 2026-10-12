@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Scenario 5 — kill the VSO controller mid-flight. With the encrypted client cache it comes back
+# Back-pocket answer to "what happens when the operator restarts?" (not a scripted scenario).
+# Kills the VSO controller mid-flight. With the encrypted client cache it comes back
 # holding the same leases: same DB credential, no new Postgres user, nothing orphaned.
 . "$(dirname "$0")/../scripts/lib.sh"
 NS=vault-secrets-operator-system

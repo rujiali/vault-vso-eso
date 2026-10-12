@@ -220,7 +220,7 @@ svg .t-v{fill:var(--vso)} svg .t-e{fill:var(--eso-text)}
   <div class="cols3">
     <div><h3>Freshness</h3><p>When a secret rotates, how long until every workload is running on the new value?</p></div>
     <div><h3>Lifecycle</h3><p>Who renews dynamic credentials, and who revokes them when a workload goes away?</p></div>
-    <div><h3>Operations</h3><p>What happens when the operator restarts, and who supports it when it breaks?</p></div>
+    <div><h3>Operations</h3><p>How many components does it take, and who supports them when they break?</p></div>
   </div>
   <div class="foot"><span>Both operators sync Vault data into Kubernetes Secrets. The differences are in these three areas.</span></div>
   <aside class="notes">
@@ -564,7 +564,7 @@ svg .t-v{fill:var(--vso)} svg .t-e{fill:var(--eso-text)}
   <div class="eyebrow">Scenario 5 · Short-lived TLS</div>
   <h2>Short-lived certificates only work when renewal and reload are automatic</h2>
   <div class="duo">
-    <div class="side v"><h3>VSO <small>VaultPKISecret</small></h3><ul><li>Renews 2 minutes before a 5-minute certificate expires</li><li>Rolls the app onto the new certificate</li><li>Revokes the old one</li></ul><span class="pill ok verdict">in sync</span></div>
+    <div class="side v"><h3>VSO <small>VaultPKISecret</small></h3><ul><li>Renews 30 seconds before a 5-minute certificate expires</li><li>Rolls the app onto the new certificate</li><li>Revokes the old one</li></ul><span class="pill ok verdict">in sync</span></div>
     <div class="side e"><h3>ESO <small>generator → pki/issue</small></h3><ul><li>New certificate in the Secret every 3 minutes</li><li>The app keeps serving the one it loaded at start-up</li><li>Old certificates aren't revoked</li></ul><span class="pill bad verdict">app serving an expired cert</span></div>
   </div>
   <div class="foot"><span>Watch row 3 of the dashboard. The serial changes on its own on the VSO side.</span></div>
@@ -576,18 +576,25 @@ svg .t-v{fill:var(--vso)} svg .t-e{fill:var(--eso-text)}
 
 <!-- 12 -->
 <div class="frame"><div class="stage">
-<section class="slide" data-title="Operator restart">
-  <div class="eyebrow">Scenario 6 · Resilience</div>
-  <h2>Kill the operator. It comes back holding the same lease.</h2>
-  <div class="cols3">
-    <div><h3>Before</h3><p>app-vso is using one database credential under one Vault lease.</p></div>
-    <div><h3>Restart</h3><p>The VSO controller pod is deleted mid-flight.</p></div>
-    <div><h3>After</h3><p>Same username, no new Postgres user, nothing orphaned.</p></div>
-  </div>
-  <p class="lede">VSO persists its lease state to Kubernetes, encrypted with Vault Transit. An operator that owns leases has to survive restarts, and this is how it does it.</p>
-  <div class="foot"><span>Encrypted client cache: helm/vso-values.yaml</span><span class="demo"><b>Live</b>demo/kill-vso.sh</span></div>
+<section class="slide" data-title="Even with Reloader">
+  <div class="eyebrow">Even with Reloader</div>
+  <h2>Reloader keeps ESO's apps current. The cost just moves.</h2>
+  <table>
+    <thead><tr><th></th><th class="vso">Vault Secrets Operator</th><th class="eso">ESO + Stakater Reloader</th></tr></thead>
+    <tbody>
+      <tr><th>DB credentials issued</th><td>2 per workload per hour (renewed in place)</td><td>12 per workload per hour (new every refresh)</td></tr>
+      <tr><th>Live at any moment</th><td>1 per workload</td><td>2–3 per workload, none renewed</td></tr>
+      <tr><th>Workload deleted</th><td>Revoked within seconds</td><td>Stay valid until their TTL runs out</td></tr>
+      <tr><th>KV reads against Vault</th><td>On change (events), plus an hourly fallback</td><td>Every refresh: 60 per secret per hour</td></tr>
+      <tr><th>Vault shortens a TTL</th><td>Adapts to the lease and certificate expiry</td><td>Expired until every manifest is re-tuned</td></tr>
+      <tr><th>Components to accredit</th><td>One, under Vault Enterprise support</td><td>Two community projects</td></tr>
+    </tbody>
+  </table>
+  <div class="foot"><span>Per workload, lab settings: DB TTL 10m, max 30m; ESO refresh 5m (DB), 1m (KV)</span><span class="demo"><b>Live</b>demo/tighten-ttl.sh</span></div>
   <aside class="notes">
-    <p>The script prints the credential before and after. This is about VSO being safe in production rather than a direct comparison with ESO, so present it that way.</p>
+    <p>Concede first: for static KV secrets where a minute's delay is fine, ESO plus Reloader does the job. That's what makes the rest credible.</p>
+    <p>Scale it to the client: at 500 workloads that's about 6,000 database credentials an hour from ESO against 1,000 from VSO. Each is a Vault lease, a CREATE ROLE and DROP ROLE in the database, and audit entries for the SIEM.</p>
+    <p>Run demo/tighten-ttl.sh to show the "Vault shortens a TTL" row live. Don't lead on restart counts: with 5-minute certificates VSO restarts the app often too.</p>
   </aside>
 </section>
 </div></div>

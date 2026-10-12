@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scenarios 1 and 5 — ground truth for dynamic database credentials:
+# Scenario 4 — ground truth for dynamic database credentials:
 # live Vault leases and live Postgres users, per operator. Refreshes every 3s.
 #   demo/leases.sh          keep watching
 #   demo/leases.sh --once   print once

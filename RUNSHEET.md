@@ -9,8 +9,9 @@ Anything that differs on screen is down to the operator.
 - [ ] Browser: http://localhost:8080 (dashboard) on the projector. Optional second tab: http://localhost:8200/ui, namespace `demo`.
 - [ ] Terminal 1: `demo/leases.sh` (it keeps refreshing). Terminal 2: for commands.
 - [ ] `./scripts/status.sh` shows every VaultStaticSecret, VaultDynamicSecret, VaultPKISecret and ExternalSecret as synced/ready.
-- [ ] You rehearsed scenarios 1 and 6 on **the ESO version this lab installed** (`helm list -A`) and know how they come out. See "Things to verify" at the bottom.
+- [ ] You rehearsed scenarios 4 and 6 on **the ESO version this lab installed** (`helm list -A`) and know how they come out. See "Things to verify" at the bottom.
 - [ ] Zoom the browser to 125–150%.
+- [ ] Decide whether Reloader is in: `helm list -n reloader`. For the default-ESO story (red badges in scenarios 4 and 5), remove it with `demo/eso-reloader.sh remove`. If it stays in, use the "with Reloader" step in scenario 4.
 
 ---
 
@@ -85,26 +86,33 @@ Point at the dashboard's **Live users in Postgres** row, read straight from the 
 
 `demo/restore.sh` to put things back.
 
+**With Reloader installed** (or when someone says "just add Reloader"): rows 2 and 3 stay green on the ESO side, because Reloader restarts the app onto each new credential and certificate before the old one expires. That only works because someone set ESO's refresh intervals (5m for the database, 3m for TLS) shorter than Vault's lifetimes (10m and 5m). Show what happens when the Vault team tightens them:
+
+```bash
+demo/tighten-ttl.sh          # DB credentials 2m, certificates capped at 90s, for BOTH operators
+```
+
+- **VSO:** schedules from what Vault actually returned: renews the database lease at 67% of its TTL, and gets a new certificate 30 seconds before the current one really expires. Rows 2 and 3 stay green.
+- **ESO:** still refreshes on its fixed intervals. After the script:
+  - about 90 seconds in, row 3 turns red, "app serving an expired cert", for 90 seconds in every 3 minutes
+  - about 2 minutes in, row 2 turns red, "app can't log in to Postgres", for 3 minutes in every 5
+
+  Reloader or not.
+
+> "ESO's refresh interval is a number someone typed into a manifest. It doesn't know what Vault decided the lifetime is. When the security team shortens TTLs, every ESO consumer has to be re-tuned, and the ones that aren't break quietly. VSO works from the lease and the certificate's real expiry."
+
+`demo/tighten-ttl.sh reset` puts both back (database 10 minutes, certificates 5).
+
 ## 5. TLS certificates (4 min)
 
 Row 3. The certificates last 5 minutes.
 
-- **VSO:** renews 2 minutes before expiry, rolls the app and revokes the old certificate. The serial number changes by itself and stays in sync.
+- **VSO:** renews 30 seconds before expiry, rolls the app and revokes the old certificate. The serial number changes by itself and stays in sync.
 - **ESO:** the Secret gets a new certificate every 3 minutes, but the app keeps serving the one it loaded at start-up. Wait for the red badge **app serving an expired cert**.
 
 > "Short-lived certificates are where the ISM is heading. They only work if renewal and reload are automatic."
 
-## 6. Resilience: kill the operator (3 min)
-
-```bash
-demo/kill-vso.sh
-```
-
-The script kills the VSO controller. It comes back up, reads its encrypted client cache (encrypted by Vault Transit) and resumes the **same** lease. The script prints the before and after credential: same username, no new Postgres user.
-
-> "VSO owns lease state, so it has to survive restarts. It persists that state to Kubernetes encrypted with Vault Transit. This is what makes it safe in production, not just in a lab."
-
-## 7. Tampering (2 min, optional)
+## 6. Tampering (2 min, optional)
 
 ```bash
 demo/tamper.sh vso
@@ -113,11 +121,17 @@ demo/tamper.sh eso
 
 Someone with `kubectl` overwrites a synced Secret. **Only present this as a difference if your rehearsal showed one.** If both operators restore it quickly, say so: that's parity.
 
-## 8. Close (2 min)
+## 7. Close (2 min)
 
 - **Where ESO is the right call:** many secret backends through one API, pushing secrets back to a store (PushSecret), or a team that already runs it happily.
 - **Where VSO earns its place:** Vault is the system of record, you use dynamic credentials or PKI, rotation speed matters, and you need it under the same vendor support contract as Vault Enterprise.
 - **Both can coexist:** VSO for Vault, ESO for everything else. Say this if they already run ESO.
+
+---
+
+## If they ask: "What happens when the operator restarts?"
+
+Neither app notices: the Secrets stay put and the pods keep running. VSO resumes the same leases from its client cache, which is encrypted with Vault Transit, so lease state isn't sitting in plain text in etcd. ESO tracks no leases, so it has nothing to resume; it refreshes whatever fell due while it was down. To show the VSO side live: `demo/kill-vso.sh` (prints the database credential before and after: same username, no new Postgres user).
 
 ---
 
@@ -136,6 +150,7 @@ Someone with `kubectl` overwrites a synced Secret. **Only present this as a diff
 These are where the lab's behaviour depends on versions, so check them rather than trust the script:
 
 1. **ESO lease cleanup.** Recent ESO releases added clean-up for some generated secrets (GeneratorState). Check whether the version you installed revokes Vault leases when an ExternalSecret is deleted or refreshed. If it does, scenario 4's "orphaned credentials" point weakens, so lead with the renewal and in-use-credential points instead.
-2. **Tampering.** See scenario 7.
+2. **Tampering.** See scenario 6.
 3. **VSO instant updates.** Run `demo/check-events.sh` first: it confirms Vault delivers KV change events to a token with VSO's policy. Then `demo/rotate-kv.sh` should reach VSO within about 2s. If VSO lags, the dashboard shows "Secret not updated yet" on its side.
-4. **Instant updates for dynamic secrets (VSO 1.6).** Not wired into this lab. It's a good stretch goal if the client uses database static roles.
+4. **`demo/tighten-ttl.sh`.** Run it once with Reloader installed. Check that VSO stays green on rows 2 and 3 (it may rotate to a new database credential once when it first sees the shorter lease) and note how long each ESO row takes to go red.
+5. **Instant updates for dynamic secrets (VSO 1.6).** Not wired into this lab. It's a good stretch goal if the client uses database static roles.
